@@ -56,8 +56,10 @@ interface Food {
   description: string;
   price: number;
   image_url: string;
+  thumbnail_url: string;
   formattedPrice: string;
   extras: Extra[];
+  category: number;
 }
 
 const FoodDetails: React.FC = () => {
@@ -74,6 +76,24 @@ const FoodDetails: React.FC = () => {
   useEffect(() => {
     async function loadFood(): Promise<void> {
       // Load a specific food with extras based on routeParams id
+      api.get(`/foods/${routeParams.id}`).then(response => {
+        setFood(response.data);
+        const foodExtras = response.data.extras.map(extra => {
+          return {
+            ...extra,
+            quantity: 0,
+          };
+        });
+
+        setExtras(foodExtras);
+
+        api.get(`/favorites`).then(res => {
+          const isFoodFavorite = res.data.find(
+            fav => fav.id === routeParams.id,
+          );
+          setIsFavorite(isFoodFavorite);
+        });
+      });
     }
 
     loadFood();
@@ -81,30 +101,90 @@ const FoodDetails: React.FC = () => {
 
   function handleIncrementExtra(id: number): void {
     // Increment extra quantity
+    const extraIndex = extras.findIndex(extra => extra.id === id);
+
+    const updatedExtra = [...extras];
+
+    updatedExtra[extraIndex].quantity += 1;
+
+    setExtras(updatedExtra);
   }
 
   function handleDecrementExtra(id: number): void {
     // Decrement extra quantity
+    const extraIndex = extras.findIndex(extra => extra.id === id);
+
+    const updatedExtra = [...extras];
+
+    if (updatedExtra[extraIndex].quantity === 0) {
+      return;
+    }
+
+    updatedExtra[extraIndex].quantity -= 1;
+    setExtras(updatedExtra);
   }
 
   function handleIncrementFood(): void {
     // Increment food quantity
+    setFoodQuantity(state => state + 1);
   }
 
   function handleDecrementFood(): void {
     // Decrement food quantity
+    if (foodQuantity === 1) {
+      return;
+    }
+    setFoodQuantity(state => state - 1);
   }
 
   const toggleFavorite = useCallback(() => {
     // Toggle if food is favorite or not
-  }, [isFavorite, food]);
+    const favorite = food;
+    delete favorite.extras;
+
+    if (!isFavorite) {
+      api.post(`/favorites`, favorite);
+      setIsFavorite(true);
+    } else {
+      api.delete(`/favorites/${routeParams.id}`);
+      setIsFavorite(false);
+    }
+  }, [isFavorite, food, routeParams.id]);
 
   const cartTotal = useMemo(() => {
+    const additional =
+      extras
+        .map(extra => {
+          return extra.quantity * extra.value;
+        })
+        .reduce((prev, curr) => prev + curr, 0) * foodQuantity;
+
+    return food.price * foodQuantity + additional;
+
     // Calculate cartTotal
   }, [extras, food, foodQuantity]);
 
   async function handleFinishOrder(): Promise<void> {
     // Finish the order and save on the API
+    /*
+    {
+      "id": 1,
+      "product_id": 1,
+      "name": "Ao molho",
+      "description": "Macarrão ao molho branco, fughi e cheiro verde das montanhas.",
+      "price": 19.9,
+      "category": 1,
+      "thumbnail_url": "https://storage.googleapis.com/golden-wind/bootcamp-gostack/desafio-gorestaurant-mobile/ao_molho.png",
+      "extras": [
+        {
+          "id": 4,
+          "name": "Bacon",
+          "value": 1.5,
+          "quantity": 1
+        }
+      ]
+    }
+    */
   }
 
   // Calculate the correct icon name
@@ -179,7 +259,9 @@ const FoodDetails: React.FC = () => {
         <TotalContainer>
           <Title>Total do pedido</Title>
           <PriceButtonContainer>
-            <TotalPrice testID="cart-total">{cartTotal}</TotalPrice>
+            <TotalPrice testID="cart-total">
+              {`${formatValue(cartTotal)}`}
+            </TotalPrice>
             <QuantityContainer>
               <Icon
                 size={15}
